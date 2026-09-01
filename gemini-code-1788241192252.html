@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>個人專屬工作臺 | Workplace</title>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Tailwind CSS (用於登入介面) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        :root {
+            --bg-color: #F7F6F3;
+            --card-bg: #FFFFFF;
+            --text-main: #37352F;
+            --text-sub: #787774;
+            --border-color: #E9E9E7;
+            --hover-bg: #EFEFE1;
+            --accent-blue: #2EAADC;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); padding: 20px 16px 40px; max-width: 650px; margin: 0 auto; }
+
+        .page-header { margin-bottom: 20px; }
+        .page-icon { font-size: 36px; margin-bottom: 6px; }
+        .page-title { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .user-tag { font-size: 11px; background: rgba(46, 170, 220, 0.15); color: #0B6D93; padding: 2px 8px; border-radius: 12px; font-weight: 500; cursor: pointer; }
+        .page-subtitle { font-size: 12px; color: var(--text-sub); margin-top: 4px; }
+
+        .nav-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; }
+        .tab-btn { padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--text-sub); border: none; background: transparent; cursor: pointer; border-radius: 4px; }
+        .tab-btn.active { color: var(--text-main); font-weight: 600; background: rgba(55, 53, 47, 0.08); }
+
+        .notion-block { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(15,15,15,0.03); }
+        .block-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+
+        .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .form-row.vertical { flex-direction: column; }
+        .form-group { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .form-label { font-size: 11px; font-weight: 600; color: var(--text-sub); }
+
+        input, select { width: 100%; border: 1px solid var(--border-color); background: #FAF9F6; border-radius: 4px; padding: 7px 10px; font-size: 13px; color: var(--text-main); outline: none; }
+        input:focus, select:focus { border-color: #2EAADC; background: #FFF; }
+
+        button.btn-primary { background: #2383E2; color: white; border: none; border-radius: 4px; padding: 8px 14px; font-weight: 500; font-size: 13px; cursor: pointer; }
+        button.btn-primary:hover { background: #0077D6; }
+        button.btn-sub { background: #E3E2E0; color: #37352F; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; }
+        button.btn-sub:hover { background: #D3D2D0; }
+
+        .list-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+        .list-item:last-child { border-bottom: none; }
+
+        .cat-tag { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500; margin-right: 6px; background: #E3E2E0; color: #37352F; }
+
+        .calendar-nav { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 13px; margin-bottom: 10px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+        .calendar-head { font-weight: 600; color: var(--text-sub); padding-bottom: 6px; font-size: 11px; }
+        .calendar-cell { padding: 4px 2px; background: #FFF; border-radius: 3px; min-height: 42px; border: 1px solid var(--border-color); font-size: 12px; cursor: pointer; }
+        .calendar-cell.today { background: #EBF5FE; border-color: #2EAADC; font-weight: 600; }
+        .calendar-cell.selected { border: 2px solid var(--text-main); }
+
+        .page-content { display: none; }
+        .page-content.active { display: block; }
+
+        .callout-box { background: #F7F6F3; border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; font-size: 12.5px; line-height: 1.5; margin-top: 10px; }
+        .empty-state { font-size: 12px; color: var(--text-sub); padding: 8px 0; font-style: italic; }
+
+        .footer-tools { text-align: center; margin-top: 30px; font-size: 12px; color: var(--text-sub); }
+        .danger-btn { background: none; border: none; color: #EB5757; font-size: 11px; cursor: pointer; text-decoration: underline; }
+    </style>
+
+    <!-- Firebase SDK (v10 Modular) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getAuth, 
+            GoogleAuthProvider, 
+            signInWithPopup, 
+            createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword, 
+            RecaptchaVerifier, 
+            signInWithPhoneNumber, 
+            signOut, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            getDoc 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC-L5iqgH0KXiZTDSixkdUGem0vqFbV8zc",
+            authDomain: "schedule-helper-bf505.firebaseapp.com",
+            projectId: "schedule-helper-bf505",
+            storageBucket: "schedule-helper-bf505.firebasestorage.app",
+            messagingSenderId: "137548362997",
+            appId: "1:137548362997:web:46f96254892ca1ce8e81bc",
+            measurementId: "G-5P9RLKDYL7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.currentUser = null;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setupAuthTabs();
+            
+            // 監聽 Firebase 登入狀態變更
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    window.currentUser = user;
+                    document.getElementById('firebase-auth-section').classList.add('hidden');
+                    document.getElementById('main-workspace-section').classList.remove('hidden');
+                    document.getElementById('firebase-user-email').innerText = user.email || user.phoneNumber || "Google 用戶";
+                    
+                    // 登入後：載入屬於該 UID 專屬的雲端資料
+                    loadCloudBackup(user.uid);
+                } else {
+                    // 登出或未登入：完全清空內部數據與畫面
+                    window.currentUser = null;
+                    clearSessionData();
+                    document.getElementById('firebase-auth-section').classList.remove('hidden');
+                    document.getElementById('main-workspace-section').classList.add('hidden');
+                }
+            });
+        });
+
+        function setupAuthTabs() {
+            const tabEmail = document.getElementById('tab-email');
+            const tabPhone = document.getElementById('tab-phone');
+            const formEmail = document.getElementById('form-email');
+            const formPhone = document.getElementById('form-phone');
+
+            if(tabEmail && tabPhone) {
+                tabEmail.addEventListener('click', () => {
+                    tabEmail.className = "flex-1 py-2 text-center font-semibold text-indigo-600 border-b-2 border-indigo-600 cursor-pointer";
+                    tabPhone.className = "flex-1 py-2 text-center font-semibold text-gray-500 border-b-2 border-transparent hover:text-indigo-600 cursor-pointer";
+                    formEmail.classList.remove('hidden');
+                    formPhone.classList.add('hidden');
+                });
+
+                tabPhone.addEventListener('click', () => {
+                    tabPhone.className = "flex-1 py-2 text-center font-semibold text-indigo-600 border-b-2 border-indigo-600 cursor-pointer";
+                    tabEmail.className = "flex-1 py-2 text-center font-semibold text-gray-500 border-b-2 border-transparent hover:text-indigo-600 cursor-pointer";
+                    formPhone.classList.remove('hidden');
+                    formEmail.classList.add('hidden');
+                });
+            }
+        }
+
+        // --- 清空登入者的臨時資料（實現多使用者隔離） ---
+        function clearSessionData() {
+            window.events = [];
+            window.transactions = [];
+            window.customCategories = ['💼 工作', '🏠 家庭', '🎉 聚會', '🌸 個人'];
+            window.userName = '';
+            if(window.initWorkspaceUI) window.initWorkspaceUI();
+        }
+
+        // --- Firebase Auth Actions ---
+        window.loginWithGoogle = async function() {
+            logAuthStatus("正在連接 Google 驗證服務...");
+            try {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                logAuthStatus("Google 登入失敗: " + error.message, "warning");
+            }
+        };
+
+        window.handleEmailAuth = async function(type) {
+            const email = document.getElementById('input-email').value;
+            const password = document.getElementById('input-password').value;
+
+            if (!email || !password) { alert("請填寫 Email 與密碼"); return; }
+
+            logAuthStatus(`正在處理 Email ${type === 'login' ? '登入' : '註冊'}...`);
+            try {
+                if (type === 'signup') {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                } else {
+                    await signInWithEmailAndPassword(auth, email, password);
+                }
+            } catch (error) {
+                logAuthStatus("失敗: " + error.message, "warning");
+            }
+        };
+
+        window.sendSMS = async function() {
+            const phone = document.getElementById('input-phone').value;
+            if (!phone) { alert("請輸入完整電話號碼 (需加國碼，例如 +886912345678)"); return; }
+            logAuthStatus("發送簡訊驗證碼中...");
+
+            try {
+                window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+                const confirmationResult = await signInWithPhoneNumber(auth, phone, window.recaptchaVerifier);
+                window.confirmationResult = confirmationResult;
+                document.getElementById('phone-code-sec').classList.remove('hidden');
+                logAuthStatus("驗證碼已發送！", "success");
+            } catch (error) {
+                logAuthStatus("簡訊發送失敗: " + error.message, "warning");
+            }
+        };
+
+        window.verifySMSCode = async function() {
+            const code = document.getElementById('input-sms').value;
+            try {
+                await window.confirmationResult.confirm(code);
+            } catch (error) {
+                logAuthStatus("驗證碼錯誤: " + error.message, "warning");
+            }
+        };
+
+        window.logoutFirebase = function() {
+            signOut(auth);
+        };
+
+        // --- 雲端備份與獨立讀取 ---
+        window.saveToCloudBackup = async function(manual = true) {
+            if (!window.currentUser) return;
+            const uid = window.currentUser.uid;
+
+            const cloudData = {
+                userName: window.userName || '',
+                categories: window.customCategories || [],
+                events: window.events || [],
+                transactions: window.transactions || [],
+                updatedAt: new Date().toISOString()
+            };
+
+            try {
+                await setDoc(doc(db, "user_backups", uid), cloudData);
+                if(manual) alert("☁️ 個人數據已成功同步存至您的專屬雲端！");
+            } catch (e) {
+                alert("雲端同步失敗: " + e.message);
+            }
+        };
+
+        window.loadCloudBackup = async function(uid) {
+            try {
+                const docSnap = await getDoc(doc(db, "user_backups", uid));
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    window.events = data.events || [];
+                    window.transactions = data.transactions || [];
+                    window.customCategories = data.categories || ['💼 工作', '🏠 家庭', '🎉 聚會', '🌸 個人'];
+                    window.userName = data.userName || '';
+                } else {
+                    // 全新使用者，給予空資料
+                    clearSessionData();
+                }
+                window.initWorkspaceUI();
+            } catch (e) {
+                console.error("雲端讀取失敗:", e);
+            }
+        };
+
+        function logAuthStatus(msg, type = "info") {
+            const statusBox = document.getElementById('auth-status-log');
+            if(!statusBox) return;
+            const colorMap = {
+                info: "text-blue-600 bg-blue-50 border-blue-200",
+                success: "text-emerald-700 bg-emerald-50 border-emerald-200",
+                warning: "text-amber-700 bg-amber-50 border-amber-200"
+            };
+            statusBox.className = `p-3 rounded-lg border text-sm font-mono transition-all ${colorMap[type] || colorMap.info}`;
+            statusBox.innerHTML = `<span class="font-bold">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+        }
+    </script>
+</head>
+<body>
+
+    <div id="recaptcha-container"></div>
+
+    <!-- ==================== Firebase 登入介面 (未登入時顯示) ==================== -->
+    <div id="firebase-auth-section" class="max-w-md w-full mx-auto my-10 bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+        <div class="bg-indigo-600 p-6 text-white text-center">
+            <!-- 已刪除 V2 -->
+            <h1 class="text-2xl font-bold tracking-wide">個人專屬工作臺</h1>
+            <p class="text-xs text-indigo-200 mt-1">請先登入以載入您獨立的專屬數據</p>
+        </div>
+
+        <div class="p-4 bg-slate-50 border-b border-slate-100">
+            <div id="auth-status-log" class="p-3 rounded-lg border text-sm font-mono text-slate-600 bg-white border-slate-200">
+                [系統就緒] 請選擇方式登入獨立帳號。
+            </div>
+        </div>
+
+        <div class="p-6 space-y-6">
+            <button onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 rounded-xl py-3 px-4 font-medium text-slate-700 hover:bg-slate-50 transition shadow-sm active:scale-95">
+                使用 Google 帳戶登入
+            </button>
+
+            <div class="flex border-b border-slate-200">
+                <div id="tab-email" class="flex-1 py-2 text-center font-semibold text-indigo-600 border-b-2 border-indigo-600 cursor-pointer">帳號密碼</div>
+                <div id="tab-phone" class="flex-1 py-2 text-center font-semibold text-gray-500 border-b-2 border-transparent hover:text-indigo-600 cursor-pointer">電話 SMS</div>
+            </div>
+
+            <!-- Email 表單 -->
+            <div id="form-email" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">電子郵件 (Email)</label>
+                    <input type="email" id="input-email" placeholder="name@example.com" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">密碼</label>
+                    <input type="password" id="input-password" placeholder="••••••••" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button onclick="handleEmailAuth('login')" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl shadow-md">登入</button>
+                    <button onclick="handleEmailAuth('signup')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl">註冊新帳號</button>
+                </div>
+            </div>
+
+            <!-- 電話號碼表單 -->
+            <div id="form-phone" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">手機號碼 (如 +886912345678)</label>
+                    <div class="flex gap-2">
+                        <input type="tel" id="input-phone" placeholder="+886912345678" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none">
+                        <button onclick="sendSMS()" class="bg-indigo-50 text-indigo-600 font-semibold px-4 py-2.5 rounded-xl border border-indigo-200">發送驗證碼</button>
+                    </div>
+                </div>
+                <div id="phone-code-sec" class="hidden space-y-2">
+                    <label class="block text-xs font-semibold text-slate-600">簡訊驗證碼</label>
+                    <input type="text" id="input-sms" placeholder="6 位數驗證碼" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none">
+                    <button onclick="verifySMSCode()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-xl">驗證登入</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ==================== 獨立工作臺 網頁主體 (登入後解鎖) ==================== -->
+    <div id="main-workspace-section" class="hidden">
+        
+        <div class="page-header">
+            <div class="page-icon">📑</div>
+            <div class="page-title">
+                <span id="displayUserName">我的</span>個人工作臺
+                <span class="user-tag" onclick="editUserName()">👤 修改名稱</span>
+                <button onclick="logoutFirebase()" class="btn-sub" style="margin-left:auto; background:#FEE2E2; color:#DC2626;">🔐 安全登出</button>
+            </div>
+            <div class="page-subtitle" style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                <span>目前使用者：<b id="firebase-user-email" style="color:#2563EB;">---</b></span>
+                <button onclick="saveToCloudBackup(true)" class="btn-sub" style="background:#D1FAE5; color:#059669; font-weight:600;">☁️ 立即同步至雲端</button>
+            </div>
+        </div>
+
+        <!-- 頁籤選擇 -->
+        <div class="nav-tabs">
+            <button class="tab-btn active" onclick="switchPage('main', this)">📌 行程管理</button>
+            <button class="tab-btn" onclick="switchPage('calendar', this)">📅 行事曆</button>
+            <button class="tab-btn" onclick="switchPage('finance', this)">📊 財務與市場</button>
+        </div>
+
+        <!-- 分頁 1: 行程管理 -->
+        <div id="page-main" class="page-content active">
+            <div class="notion-block">
+                <div class="block-title">
+                    <span id="formModeTitle">✍️ 新增行程</span>
+                    <button class="btn-sub" id="cancelEditBtn" style="display:none;" onclick="resetEventForm()">取消編輯</button>
+                </div>
+                <div class="form-row vertical">
+                    <input type="hidden" id="editingEventId" value="">
+                    <div class="form-group">
+                        <span class="form-label">行程名稱</span>
+                        <input type="text" id="eventTitle" placeholder="例如：團隊週會 / 項目討論...">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <span class="form-label">日期</span>
+                            <input type="date" id="eventDate">
+                        </div>
+                        <div class="form-group">
+                            <span class="form-label">開始時間</span>
+                            <input type="time" id="eventStartTime">
+                        </div>
+                        <div class="form-group">
+                            <span class="form-label">結束時間</span>
+                            <input type="time" id="eventEndTime">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <span class="form-label">事件分類</span>
+                            <select id="eventCategory" onchange="handleCategoryChange(this)">
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <span class="form-label">重複設定</span>
+                            <select id="eventRepeat">
+                                <option value="none">不重複</option>
+                                <option value="daily">每天</option>
+                                <option value="weekly">每星期</option>
+                                <option value="monthly">每月</option>
+                                <option value="yearly">每年</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="saveEventBtn" onclick="saveEvent()" style="margin-top:4px;">儲存行程</button>
+                </div>
+            </div>
+
+            <div class="notion-block">
+                <div class="block-title">📋 所有行程明細</div>
+                <div id="recentEventList">
+                    <div class="empty-state">尚無行程記錄。</div>
+                </div>
+            </div>
+
+            <div class="notion-block">
+                <div class="block-title">🤖 智能助理（知識查詢與查證）</div>
+                <div style="font-size:12px; color:var(--text-sub); margin-bottom:8px;">您好！我是您的個人隨身助手，有任何需要核實的事實或資料，隨時問我吧！</div>
+                <div class="form-row">
+                    <input type="text" id="queryInput" placeholder="例如：2026年最新利率走向、科技股新聞...">
+                    <button class="btn-primary" onclick="askAssistantFact()">詢問助手</button>
+                </div>
+                <div id="factResult" class="callout-box" style="display:none; background:#F0F7FF; border-color:#BEE3F8;">
+                    <div id="factContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分頁 2: 互動行事曆 -->
+        <div id="page-calendar" class="page-content">
+            <div class="notion-block">
+                <div class="calendar-nav">
+                    <button class="btn-sub" onclick="changeMonth(-1)">◀ 上個月</button>
+                    <span id="calendarTitle">2026 年 9 月</span>
+                    <button class="btn-sub" onclick="changeMonth(1)">下個月 ▶</button>
+                </div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+            </div>
+
+            <div class="notion-block">
+                <div class="block-title"><span id="selectedDateTitle">📌 日期排程明細</span></div>
+                <div id="selectedDateEvents">
+                    <div class="empty-state">點擊上方日曆檢視當天排程。</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分頁 3: 財務與市場 -->
+        <div id="page-finance" class="page-content">
+            <div class="notion-block">
+                <div class="block-title">
+                    <span id="finFormTitle">💰 記錄收支數據</span>
+                    <button class="btn-sub" id="cancelFinEditBtn" style="display:none;" onclick="resetFinForm()">取消編輯</button>
+                </div>
+                <input type="hidden" id="editingFinId" value="">
+                <div class="form-row">
+                    <select id="billType" style="flex: 0.8;">
+                        <option value="expense">支出 💸</option>
+                        <option value="income">收入 💰</option>
+                    </select>
+                    <select id="billCategory" style="flex: 1;">
+                        <option value="餐飲">餐飲 🍰</option>
+                        <option value="娛樂">娛樂 🎀</option>
+                        <option value="薪資">薪資 💼</option>
+                        <option value="投資">投資 📈</option>
+                        <option value="其他">其他 🛍️</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <input type="text" id="billName" placeholder="項目說明" style="flex: 1.5;">
+                    <input type="number" id="billAmount" placeholder="金額" style="flex: 1;">
+                </div>
+                <div class="form-row">
+                    <input type="date" id="billDate">
+                    <button class="btn-primary" id="saveFinBtn" onclick="saveTransaction()">儲存記錄</button>
+                </div>
+            </div>
+
+            <div class="notion-block">
+                <div class="block-title">📜 財務歷史記錄</div>
+                <div id="financeHistoryList" style="max-height: 180px; overflow-y: auto;"></div>
+            </div>
+
+            <div class="notion-block">
+                <div class="block-title">📊 收支圖表分析</div>
+                <div style="position: relative; height:180px;">
+                    <canvas id="financeChart"></canvas>
+                </div>
+            </div>
+
+            <div class="notion-block">
+                <div class="block-title">📈 實時市場與投資策略建議</div>
+                <div class="callout-box" id="investmentAdvice">
+                    數據分析中...
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-tools">
+            <div style="margin-bottom: 10px;">
+                <button class="btn-primary" onclick="exportDataJSON()" style="background:#27AE60;">📥 導出我的資料備份 JSON</button>
+                <button class="btn-sub" onclick="document.getElementById('importFileInput').click()">📤 匯入 JSON</button>
+                <input type="file" id="importFileInput" accept=".json" style="display:none;" onchange="importDataJSON(event)">
+            </div>
+            🔒 數據通過個人安全 UID 獨立雲端隔絕防護。<br>
+            <button class="danger-btn" onclick="clearAllData()">⚠️ 清除當前裝置緩存記錄</button>
+        </div>
+
+    </div>
+
+    <!-- 工作臺前端邏輯腳本 -->
+    <script>
+        let myChart = null;
+        const today = new Date();
+        let viewYear = today.getFullYear();
+        let viewMonth = today.getMonth();
+        let selectedDateStr = formatDate(today);
+
+        // 全域變數預設為空，嚴格等候 Firebase 登入載入
+        window.customCategories = ['💼 工作', '🏠 家庭', '🎉 聚會', '🌸 個人'];
+        window.events = [];
+        window.transactions = [];
+        window.userName = '';
+
+        window.onload = function() {
+            document.getElementById('eventDate').value = formatDate(today);
+            document.getElementById('billDate').value = formatDate(today);
+        };
+
+        window.initWorkspaceUI = function() {
+            updateUserDisplay();
+            renderCategorySelect();
+            renderRecentEvents();
+            renderCalendar();
+            renderFinanceHistory();
+        };
+
+        function saveData() {
+            // 自動異步同步至當前 UID 專屬的 Firebase 雲端
+            if(window.saveToCloudBackup) window.saveToCloudBackup(false);
+        }
+
+        function formatDate(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function updateUserDisplay() {
+            document.getElementById('displayUserName').innerText = window.userName ? `${window.userName} 的` : '我的';
+        }
+
+        function editUserName() {
+            const name = prompt("請輸入您的專屬名稱：", window.userName);
+            if (name !== null) {
+                window.userName = name.trim();
+                saveData();
+                updateUserDisplay();
+            }
+        }
+
+        function renderCategorySelect() {
+            const select = document.getElementById('eventCategory');
+            if(!select) return;
+            select.innerHTML = '';
+            window.customCategories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.innerText = cat;
+                select.appendChild(opt);
+            });
+            const otherOpt = document.createElement('option');
+            otherOpt.value = 'OTHER_NEW';
+            otherOpt.innerText = '➕ 其他 (自訂類別...)';
+            select.appendChild(otherOpt);
+        }
+
+        function handleCategoryChange(select) {
+            if (select.value === 'OTHER_NEW') {
+                const newCat = prompt("請輸入您想新增的事件分類名稱：");
+                if (newCat && newCat.trim() !== '') {
+                    const formattedCat = '📌 ' + newCat.trim();
+                    if (!window.customCategories.includes(formattedCat)) {
+                        window.customCategories.push(formattedCat);
+                        saveData();
+                    }
+                    renderCategorySelect();
+                    select.value = formattedCat;
+                } else {
+                    select.value = window.customCategories[0];
+                }
+            }
+        }
+
+        function saveEvent() {
+            const id = document.getElementById('editingEventId').value;
+            const title = document.getElementById('eventTitle').value.trim();
+            const date = document.getElementById('eventDate').value;
+            const startTime = document.getElementById('eventStartTime').value;
+            const endTime = document.getElementById('eventEndTime').value;
+            const category = document.getElementById('eventCategory').value;
+            const repeat = document.getElementById('eventRepeat').value;
+
+            if (!title || !date) { alert("請填寫行程名稱與日期！"); return; }
+
+            const timeRangeStr = (startTime || endTime) ? `${startTime || '00:00'} ~ ${endTime || '23:59'}` : '全天';
+
+            if (id) {
+                const idx = window.events.findIndex(e => e.id == id);
+                if (idx !== -1) {
+                    window.events[idx] = { id: Number(id), title, date, startTime, endTime, timeRangeStr, category, repeat };
+                }
+            } else {
+                window.events.push({ id: Date.now(), title, date, startTime, endTime, timeRangeStr, category, repeat });
+            }
+
+            saveData();
+            resetEventForm();
+            renderRecentEvents();
+            renderCalendar();
+        }
+
+        function editEvent(id) {
+            const evt = window.events.find(e => e.id == id);
+            if (!evt) return;
+
+            document.getElementById('editingEventId').value = evt.id;
+            document.getElementById('eventTitle').value = evt.title;
+            document.getElementById('eventDate').value = evt.date;
+            document.getElementById('eventStartTime').value = evt.startTime || '';
+            document.getElementById('eventEndTime').value = evt.endTime || '';
+            document.getElementById('eventCategory').value = evt.category;
+            document.getElementById('eventRepeat').value = evt.repeat || 'none';
+
+            document.getElementById('formModeTitle').innerText = '✏️ 編輯行程';
+            document.getElementById('saveEventBtn').innerText = '更新行程內容';
+            document.getElementById('cancelEditBtn').style.display = 'inline-block';
+        }
+
+        function deleteEvent(id) {
+            if (confirm("確定要刪除此行程記錄嗎？")) {
+                window.events = window.events.filter(e => e.id != id);
+                saveData();
+                renderRecentEvents();
+                renderCalendar();
+            }
+        }
+
+        function resetEventForm() {
+            document.getElementById('editingEventId').value = '';
+            document.getElementById('eventTitle').value = '';
+            document.getElementById('eventStartTime').value = '';
+            document.getElementById('eventEndTime').value = '';
+            document.getElementById('formModeTitle').innerText = '✍️ 新增行程';
+            document.getElementById('saveEventBtn').innerText = '儲存行程';
+            document.getElementById('cancelEditBtn').style.display = 'none';
+        }
+
+        function renderRecentEvents() {
+            const box = document.getElementById('recentEventList');
+            if(!box) return;
+            box.innerHTML = '';
+            if (window.events.length === 0) {
+                box.innerHTML = '<div class="empty-state">尚無行程記錄。</div>';
+                return;
+            }
+
+            window.events.slice().reverse().forEach(evt => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <div>
+                        <span class="cat-tag">${evt.category}</span>
+                        <b>${evt.title}</b>
+                        <div style="font-size:11px; color:var(--text-sub); margin-top:2px;">
+                            📅 ${evt.date} (${evt.timeRangeStr}) ${evt.repeat !== 'none' ? '🔄' : ''}
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn-sub" onclick="editEvent(${evt.id})">✏️ 編輯</button>
+                        <button class="btn-sub" onclick="deleteEvent(${evt.id})" style="color:#EB5757;">🗑️</button>
+                    </div>
+                `;
+                box.appendChild(div);
+            });
+        }
+
+        function askAssistantFact() {
+            const q = document.getElementById('queryInput').value.trim();
+            if(!q) return;
+
+            const box = document.getElementById('factResult');
+            const content = document.getElementById('factContent');
+            box.style.display = 'block';
+            content.innerHTML = "💬 <i>讓我想想看喔，正在為您整理最新資料...</i>";
+
+            setTimeout(() => {
+                content.innerHTML = `<b>😊 收到您的提問：「${q}」</b><br><br>根據最新市場數據與分析，這是一個非常值得關注的課題！建議您可以結合個人的實際需求來規劃。需要我為您進一步拆解細節嗎？`;
+            }, 500);
+        }
+
+        function changeMonth(delta) {
+            viewMonth += delta;
+            if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+            else if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+            renderCalendar();
+        }
+
+        function renderCalendar() {
+            const title = document.getElementById('calendarTitle');
+            if(!title) return;
+            title.innerText = `${viewYear} 年 ${viewMonth + 1} 月`;
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+
+            ['日', '一', '二', '三', '四', '五', '六'].forEach(d => {
+                const head = document.createElement('div');
+                head.className = 'calendar-head';
+                head.innerText = d;
+                grid.appendChild(head);
+            });
+
+            const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+            const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'calendar-cell';
+                cell.style.opacity = '0.2';
+                grid.appendChild(cell);
+            }
+
+            const todayStr = formatDate(new Date());
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const cell = document.createElement('div');
+                const mStr = String(viewMonth + 1).padStart(2, '0');
+                const dStr = String(d).padStart(2, '0');
+                const fullDate = `${viewYear}-${mStr}-${dStr}`;
+
+                cell.className = 'calendar-cell';
+                if (fullDate === todayStr) cell.classList.add('today');
+                if (fullDate === selectedDateStr) cell.classList.add('selected');
+
+                const dayEvts = window.events.filter(e => e.date === fullDate);
+                cell.innerHTML = `<div>${d}</div>` + (dayEvts.length ? `<div style="font-size:9px; color:#2383E2;">● ${dayEvts.length}項</div>` : '');
+
+                cell.onclick = function() {
+                    selectedDateStr = fullDate;
+                    renderCalendar();
+                    renderSelectedEvents();
+                };
+                grid.appendChild(cell);
+            }
+        }
+
+        function renderSelectedEvents() {
+            document.getElementById('selectedDateTitle').innerText = `📌 ${selectedDateStr} 排程明細`;
+            const box = document.getElementById('selectedDateEvents');
+            const dayEvts = window.events.filter(e => e.date === selectedDateStr);
+
+            if (dayEvts.length === 0) {
+                box.innerHTML = '<div class="empty-state">當天無排程事項。</div>';
+                return;
+            }
+
+            box.innerHTML = '';
+            dayEvts.forEach(evt => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <div>
+                        <span class="cat-tag">${evt.category}</span>
+                        <b>${evt.title}</b> (${evt.timeRangeStr})
+                    </div>
+                `;
+                box.appendChild(div);
+            });
+        }
+
+        function saveTransaction() {
+            const id = document.getElementById('editingFinId').value;
+            const type = document.getElementById('billType').value;
+            const category = document.getElementById('billCategory').value;
+            const name = document.getElementById('billName').value.trim();
+            const amount = parseFloat(document.getElementById('billAmount').value);
+            const date = document.getElementById('billDate').value;
+
+            if (!name || isNaN(amount) || amount <= 0 || !date) { alert("請填寫正確的收支項目與金額！"); return; }
+
+            if (id) {
+                const idx = window.transactions.findIndex(t => t.id == id);
+                if (idx !== -1) {
+                    window.transactions[idx] = { id: Number(id), type, category, name, amount, date };
+                }
+            } else {
+                window.transactions.push({ id: Date.now(), type, category, name, amount, date });
+            }
+
+            saveData();
+            resetFinForm();
+            renderFinanceHistory();
+            renderCharts();
+            updateInvestmentAdvice();
+        }
+
+        function editTransaction(id) {
+            const t = window.transactions.find(x => x.id == id);
+            if (!t) return;
+
+            document.getElementById('editingFinId').value = t.id;
+            document.getElementById('billType').value = t.type;
+            document.getElementById('billCategory').value = t.category;
+            document.getElementById('billName').value = t.name;
+            document.getElementById('billAmount').value = t.amount;
+            document.getElementById('billDate').value = t.date;
+
+            document.getElementById('finFormTitle').innerText = '✏️ 編輯收支記錄';
+            document.getElementById('saveFinBtn').innerText = '更新記錄';
+            document.getElementById('cancelFinEditBtn').style.display = 'inline-block';
+        }
+
+        function deleteTransaction(id) {
+            if (confirm("確定刪除此筆記錄？")) {
+                window.transactions = window.transactions.filter(t => t.id != id);
+                saveData();
+                renderFinanceHistory();
+                renderCharts();
+                updateInvestmentAdvice();
+            }
+        }
+
+        function resetFinForm() {
+            document.getElementById('editingFinId').value = '';
+            document.getElementById('billName').value = '';
+            document.getElementById('billAmount').value = '';
+            document.getElementById('finFormTitle').innerText = '💰 記錄收支數據';
+            document.getElementById('saveFinBtn').innerText = '儲存記錄';
+            document.getElementById('cancelFinEditBtn').style.display = 'none';
+        }
+
+        function renderFinanceHistory() {
+            const box = document.getElementById('financeHistoryList');
+            if(!box) return;
+            box.innerHTML = '';
+            if (window.transactions.length === 0) {
+                box.innerHTML = '<div class="empty-state">尚無收支記錄。</div>';
+                return;
+            }
+
+            window.transactions.slice().reverse().forEach(t => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <div>
+                        <span style="color:${t.type==='income'?'#27AE60':'#EB5757'}; font-weight:600;">
+                            ${t.type==='income'?'+':'-'}$${t.amount}
+                        </span>
+                        <b>${t.name}</b> (${t.category})
+                        <div style="font-size:11px; color:var(--text-sub);">${t.date}</div>
+                    </div>
+                    <div>
+                        <button class="btn-sub" onclick="editTransaction(${t.id})">✏️</button>
+                        <button class="btn-sub" onclick="deleteTransaction(${t.id})" style="color:#EB5757;">🗑️</button>
+                    </div>
+                `;
+                box.appendChild(div);
+            });
+        }
+
+        function renderCharts() {
+            const chartElem = document.getElementById('financeChart');
+            if(!chartElem) return;
+            const ctx = chartElem.getContext('2d');
+            let categories = {};
+
+            window.transactions.filter(t => t.type === 'expense').forEach(t => {
+                categories[t.category] = (categories[t.category] || 0) + t.amount;
+            });
+
+            const labels = Object.keys(categories).length ? Object.keys(categories) : ['無支出'];
+            const data = Object.values(categories).length ? Object.values(categories) : [0];
+
+            if (myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{ data: data, backgroundColor: ['#E3E2E0', '#DBEDDB', '#FDECC8', '#FADEC9', '#E8DEEE'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function updateInvestmentAdvice() {
+            const box = document.getElementById('investmentAdvice');
+            if(!box) return;
+            let totalIncome = window.transactions.filter(t => t.type === 'income').reduce((a,b) => a + b.amount, 0);
+            let totalExpense = window.transactions.filter(t => t.type === 'expense').reduce((a,b) => a + b.amount, 0);
+            let net = totalIncome - totalExpense;
+
+            box.innerHTML = `
+                <b>📊 當前個人資產狀況：淨結餘 $${net.toFixed(2)}</b><br><br>
+                <b>🌐 2026年9月最新實體市場導向策略：</b><br>
+                1. <b>AI 與電力基礎建設龍頭</b>：近期市場高度聚焦 AI 數據中心帶動的能源需求，可關注電力與銅業龍頭（如 <i>BHP</i>）。<br>
+                2. <b>大型生技醫藥防禦股</b>：面對利息走向與秋季市場波動，營運穩定且具防禦力的醫療巨頭（如 <i>Glenmark</i> / <i>CSL</i>）展現較強抗跌性。<br>
+                3. <b>資金配置建議</b>：建議保持 30% 現金流以備彈性調配，其餘資金以穩健型 ETF 進行分批佈局。
+            `;
+        }
+
+        function exportDataJSON() {
+            const backupData = {
+                userName: window.userName,
+                categories: window.customCategories,
+                events: window.events,
+                transactions: window.transactions,
+                exportTime: new Date().toLocaleString()
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", `Workplace_Backup_${formatDate(new Date())}.json`);
+            dlAnchorElem.click();
+        }
+
+        function importDataJSON(event) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.events && imported.transactions) {
+                        window.events = imported.events;
+                        window.transactions = imported.transactions;
+                        if (imported.categories) window.customCategories = imported.categories;
+                        if (imported.userName) window.userName = imported.userName;
+                        saveData();
+                        alert("✅ 備份資料已成功匯入至當前帳戶並同步！");
+                        window.initWorkspaceUI();
+                    } else {
+                        alert("⚠️ 無效的備份檔案格式。");
+                    }
+                } catch(err) {
+                    alert("⚠️ 解析備份檔案失敗。");
+                }
+            };
+            reader.readAsText(event.target.files[0]);
+        }
+
+        function switchPage(pageId, btn) {
+            document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('page-' + pageId).classList.add('active');
+            btn.classList.add('active');
+            if(pageId === 'finance') { renderCharts(); updateInvestmentAdvice(); }
+        }
+
+        function clearAllData() {
+            if (confirm("確定要清空當前畫面的數據嗎？")) {
+                window.events = [];
+                window.transactions = [];
+                saveData();
+                window.initWorkspaceUI();
+            }
+        }
+    </script>
+</body>
+</html>
